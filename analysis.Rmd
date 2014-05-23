@@ -1,0 +1,175 @@
+We need a title!
+========================================================
+
+Two questions to answer:
+
+1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+
+```{r get-raw-data, cache=TRUE}
+# read the data - read.csv can handle bz2 files. This is a long
+# running opreation, we'll want to cache it.
+raw.data <- read.csv(file = 'repdata-data-StormData.csv.bz2',
+                     strip.white = TRUE)
+```
+
+```{r examine-raw-data, echo=FALSE}
+library(stringr)
+
+# Q: which columns have NA values?
+#
+# A: 'COUNTYENDN', 'F', 'LATITUDE', 'LATITUDE_E'
+sapply(raw.data, function(x) ifelse(sum(is.na(x)) > 0, x, 0))
+
+# what about EVTYPE? seems like some are the same but for caps
+length(unique(raw.data$EVTYPE))          # 985
+length(unique(toupper(raw.data$EVTYPE))) # 898
+
+raw.data$EVTYPE <- toupper(str_trim(raw.data$EVTYPE))
+x <- unique(raw.data$EVTYPE)
+x <- x[order(x)]
+x
+```
+
+```{r process-raw-data}
+# Event Types are messy. Start by making everything the
+# same case.
+data <- raw.data
+
+# type conversions
+data$BGN_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
+data$END_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
+
+# what does our weather event distribution look like?
+DT <- data.table(data)
+results <- DT[, length(BGN_DATE), by = as.numeric(format(BGN_DATE,'%Y'))]
+setnames(results, c('Year', 'Count'))
+
+p <- ggplot(results, aes(x=Year, y=Count)) +
+  geom_point(color='blue') +
+  geom_vline(x=1994, color='red') +
+  annotate('text', x=1991, y=55000, label='1994', color='red') +
+  ggtitle('Number of Weather Events Recorded Per Year') +
+  scale_y_continuous(labels = comma)
+print(p)
+
+# value conversions
+data$EVTYPE <- toupper(str_trim(data$EVTYPE))
+
+# Now map similar dups to a single EVTYPE. We don't want
+# to get carried away generalizing, but we should re-code
+# for typos and the like. A bit yucky, but we'll be sure
+# to include the corrective actions in our report.
+data[data$EVTYPE=='AVALANCE',]$EVTYPE <- 'AVALANCHE'
+data[data$EVTYPE=='BEACH EROSIN',]$EVTYPE <- 'BEACH EROSION'
+data[data$EVTYPE=='BITTER WIND CHILL TEMPERATURES',]$EVTYPE <- 'EXTREME WIND CHILL'
+data[data$EVTYPE=='BLIZZARD AND EXTREME WIND CHIL',]$EVTYPE <- 'BLIZZARD AND EXTREME WIND CHILL'
+data[data$EVTYPE=='BLIZZARD WEATHER',]$EVTYPE <- 'BLIZZARD'
+data[data$EVTYPE=='BLOW-OUT TIDES',]$EVTYPE <- 'BLOW-OUT TIDE'
+data[data$EVTYPE=='BLOWING SNOW- EXTREME WIND CHI',]$EVTYPE <- 'BLOWING SNOW/EXTREME WIND CHILL'
+data[data$EVTYPE=='BLOWING SNOW/EXTREME WIND CHIL',]$EVTYPE <- 'BLOWING SNOW/EXTREME WIND CHILL'
+data[data$EVTYPE=='BRUSH FIRE',]$EVTYPE <- 'BRUSH FIRES'
+data[data$EVTYPE=='COASTAL  FLOODING/EROSION',]$EVTYPE <- 'COASTAL FLOODING/EROSION'
+data[data$EVTYPE=='CSTL FLOODING/EROSION',]$EVTYPE <- 'COASTAL FLOODING/EROSION'
+data[data$EVTYPE=='COASTAL FLOOD',]$EVTYPE <- 'COASTAL FLOODING'
+data[data$EVTYPE=='COASTALFLOOD',]$EVTYPE <- 'COASTAL FLOODING'
+data[data$EVTYPE=='COASTALSTORM',]$EVTYPE <- 'COASTAL STORM'
+data[data$EVTYPE=='COLD',]$EVTYPE <- 'COLD WEATHER'
+data[data$EVTYPE=='COLD AIR FUNNELS',]$EVTYPE <- 'COLD AIR FUNNEL'
+data[data$EVTYPE=='COLD WIND CHILL TEMPERATURES',]$EVTYPE <- 'COLD/WIND CHILL'
+data[data$EVTYPE=='DAM BREAK',]$EVTYPE <- 'DAM FAILURE'
+data[data$EVTYPE=='DOWNBURST WINDS',]$EVTYPE <- 'DOWNBURST'
+data[data$EVTYPE=='DRY CONDITIONS',]$EVTYPE <- 'DRY'
+data[data$EVTYPE=='DRY SPELL',]$EVTYPE <- 'DRY'
+data[data$EVTYPE=='DRY WEATHER',]$EVTYPE <- 'DRY'
+data[data$EVTYPE=='DRYNESS',]$EVTYPE <- 'DRY'
+data[data$EVTYPE=='DUSTSTORM',]$EVTYPE <- 'DUST STORM'
+data[data$EVTYPE=='EARLY SNOW',]$EVTYPE <- 'EARLY SNOWFALL'
+data[data$EVTYPE=='EROSION/CSTL FLOOD',]$EVTYPE <- 'COASTAL FLOOD/EROSION'
+data[data$EVTYPE=='EXCESSIVE RAIN',]$EVTYPE <- 'EXCESSIVE RAINFALL'
+data[data$EVTYPE=='EXTREME WIND CHILL',]$EVTYPE <- 'EXTREME WINDCHILL'
+data[data$EVTYPE=='EXTREME WINDCHILL TEMPERATURES',]$EVTYPE <- 'EXTREME WINDCHILL'
+data[data$EVTYPE=='EXTREME WIND CHILLS',]$EVTYPE <- 'EXTREME WINDCHILL'
+data[data$EVTYPE=='EXTREME WIND CHILL/BLOWING SNO',]$EVTYPE <- 'EXTREME WINDCHILL/BLOWING SNOW'
+data[data$EVTYPE=='FLASH FLOODING',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOOODING',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOODING/FLOOD',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOODS',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOOD LANDSLIDES',]$EVTYPE <- 'FLASH FLOOD/LANDSLIDE'
+data[data$EVTYPE=='FLOOD/FLASH',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLOOD/FLASH FLOODING',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLOOD FLOOD/FLASH',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLOOD/FLASHFLOOD',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLOOD/FLASH/FLOOD',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLOOD/FLASH FLOOD',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOOD/',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOOD/ FLOOD',]$EVTYPE <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLOOD WATCH/',]$EVTYPE <- 'FLOOD WATCH'
+data[data$EVTYPE=='FLOODS',]$EVTYPE <- 'FLOOD'
+data[data$EVTYPE=='FLOODING',]$EVTYPE <- 'FLOOD'
+data[data$EVTYPE=='FLOOD/RAIN/WINDS',]$EVTYPE <- 'FLOOD/RAIN/WIND'
+data[data$EVTYPE=='FLOOD & HEAVY RAIN',]$EVTYPE <- 'FLOOD/HEAVY RAIN'
+data[data$EVTYPE=='FROST\\FREEZE',]$EVTYPE <- 'FROST/FREEZE'
+data[data$EVTYPE=='FREEZING DRIZZLE AND FREEZING',]$EVTYPE <- 'FREEZING DRIZZLE AND FREEZING RAIN'
+data[data$EVTYPE=='FREEZING RAIN SLEET AND',]$EVTYPE <- 'FREEZING RAIN SLEET AND SNOW'
+data[data$EVTYPE=='FREEZING RAIN/SLEET',]$EVTYPE <- 'FREEZING RAIN AND SLEET'
+data[data$EVTYPE=='FREEZING RAIN/SNOW',]$EVTYPE <- 'FREEZING RAIN AND SNOW'
+data[data$EVTYPE=='FUNNEL CLOUD.',]$EVTYPE <- 'FUNNEL CLOUD'
+data[data$EVTYPE=='FUNNEL CLOUDS',]$EVTYPE <- 'FUNNEL CLOUD'
+data[data$EVTYPE=='FUNNELS',]$EVTYPE <- 'FUNNEL'
+data[data$EVTYPE=='GLAZE',]$EVTYPE <- 'GLAZE ICE'
+data[data$EVTYPE=='GRADIENT WIND',]$EVTYPE <- 'GRADIENT WINDS'
+data[data$EVTYPE=='GUSTNADO AND',]$EVTYPE <- 'GUSTNADO'
+data[data$EVTYPE=='GUSTY WIND',]$EVTYPE <- 'GUSTY WINDS'
+data[data$EVTYPE=='HAILSTORM',]$EVTYPE <- 'HAIL'
+data[data$EVTYPE=='HAILSTORMS',]$EVTYPE <- 'HAIL'
+data[data$EVTYPE=='HAIL STORM',]$EVTYPE <- 'HAIL'
+data[data$EVTYPE=='WATER SPOUT',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WATERSPOUT-',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WATERSPOUT TORNADO',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WATERSPOUT-TORNADO',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WATERSPOUT/ TORNADO',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WATERSPOUT/TORNADO',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WATERSPOUTS',]$EVTYPE <- 'WATERSPOUT'
+data[data$EVTYPE=='WILD/FOREST FIRE',]$EVTYPE <- 'WILDFIRE'
+data[data$EVTYPE=='WILD/FOREST FIRES',]$EVTYPE <- 'WILDFIRE'
+data[data$EVTYPE=='WILD FIRES',]$EVTYPE <- 'WILDFIRE'
+data[data$EVTYPE=='WILDFIRES',]$EVTYPE <- 'WILDFIRE'
+data[data$EVTYPE=='WIND',]$EVTYPE <- 'WINDS'
+data[data$EVTYPE=='WINTER MIX',]$EVTYPE <- 'WINTRY MIX'
+data[data$EVTYPE=='WINTERY MIX',]$EVTYPE <- 'WINTRY MIX'
+data[data$EVTYPE=='WINTER WEATHER/MIX',]$EVTYPE <- 'WINTRY MIX'
+data[data$EVTYPE=='WINTER WEATHER MIX',]$EVTYPE <- 'WINTRY MIX'
+data[data$EVTYPE=='WND',]$EVTYPE <- 'WIND'
+data[data$EVTYPE=='WINDS',]$EVTYPE <- 'WIND'
+data[data$EVTYPE=='WINTER STORMS',]$EVTYPE <- 'WINTER STORM'
+data[data$EVTYPE=='WINTER STORM/HIGH WIND',]$EVTYPE <- 'WINTER STORM/HIGH WINDS'
+data[data$EVTYPE=='WINTER STORM HIGH WINDS',]$EVTYPE <- 'WINTER STORM/HIGH WINDS'
+
+x <- unique(data$EVTYPE)
+x <- x[order(x)]
+x
+```
+
+```{r population-harm}
+library(data.table)
+library(scales)
+library(ggplot2)
+
+DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
+results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE]
+results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
+top25 <- head(results, 25)
+
+p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1)) +
+  geom_bar(stat='identity', fill='blue') +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  ggtitle('Weather Events Affecting the Population - Top 25\nJan. 1994 - Nov. 2011') +
+  xlab('Weather Event') +
+  ylab('Nbr Injuries and Fatalities')
+print(p)
+```
+
