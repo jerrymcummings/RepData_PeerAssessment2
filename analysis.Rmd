@@ -1,11 +1,11 @@
 ---
-title: "Analysis of Storm Events"
+title: "Analysis of U.S. Weather Events"
 output:
   html_document:
     self_contained: true
 ---
 
-Analysis Of Storm Events
+Analysis Of U.S. Weather Events
 ========================================================
 
 Two questions to answer:
@@ -31,22 +31,33 @@ raw.data <- read.csv(file = 'repdata-data-StormData.csv.bz2',
 ```{r examine-raw-data, echo=FALSE}
 # Q: which columns have NA values?
 #
+#sapply(raw.data, function(x) ifelse(sum(is.na(x)) > 0, x, 0))
 # A: 'COUNTYENDN', 'F', 'LATITUDE', 'LATITUDE_E'
-sapply(raw.data, function(x) ifelse(sum(is.na(x)) > 0, x, 0))
 
 # what about EVTYPE? seems like some are the same but for caps
-length(unique(raw.data$EVTYPE))          # 985
-length(unique(toupper(raw.data$EVTYPE))) # 898
+#length(unique(raw.data$EVTYPE))          # 985
+#length(unique(toupper(raw.data$EVTYPE))) # 898
 ```
 
 
 ```{r process-raw-data, echo=TRUE}
+# copy of raw data so that we can refer back if we need to
 data <- raw.data
-
 
 # date type conversions
 data$BGN_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
 data$END_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
+
+# states?
+unique(data$STATE)
+
+# some of those are states, some appear to be territories, and
+# some to be either fabricated on-the-fly or mistakes. I'm 
+# hesitant to change any for this analysis.
+#
+#   PZ? maybe that's for Panama Canal Zone which is now obsolete.
+#   GM? maybe that's for Guam, which is GU?
+#   LH? who knows?
 
 # what does our weather event distribution look like?
 DT <- data.table(data)
@@ -61,9 +72,8 @@ p <- ggplot(results, aes(x=Year, y=Count)) +
   scale_y_continuous(labels = comma)
 print(p)
 
-# Event Types are messy.
-# valid event types from the docs
-event.types <- c(
+# Here are the valid event types from the docs
+valid.event.types <- c(
   'Astronomical Low Tide',
   'Avalanche',
   'Blizzard',
@@ -113,119 +123,175 @@ event.types <- c(
   'Winter Storm',
   'Winter Weather'
 )
-event.types <- toupper(event.types)
+valid.event.types <- toupper(valid.event.types)
 
-# Now clean up a bunch of event types as best we can. We don't want
-# to get carried away generalizing, but we should make some effort
+# Excessive messiness. Those field guys need better data entry
+# software so that a bunch of unnecessary hooey isn't flooding
+# our data. (Ha, ha. Get it? 'flooding'???)
 
-# lets ease our data cleanup effort a bit. For now, we'll only look
+# Let's ease our data cleanup effort a bit. For now, we'll only look
 # at events that have FATALITIES, INJURIES, PROPDMG, CROPDMG as those
 # are the areas that we'll be focusing on in this analysis.
-
 data <- subset(data, !is.na(FATALITIES) |
                  !is.na(INJURIES) |
                  !is.na(PROPDMG) |
                  !is.na(CROPDMG)
                )
 
+# uniformly upper case
 data$EVTYPE2 <- toupper(str_trim(data$EVTYPE))
 
-data[data$EVTYPE=='AVALANCE',]$EVTYPE2 <- 'AVALANCHE'
+# start making substitutions. Note: order matters
+data$EVTYPE2[grepl('.*AVAL.*', data$EVTYPE2)] <- 'AVALANCHE'
 
-data[data$EVTYPE=='WIND',]$EVTYPE2 <- 'HIGH WIND'
-data[data$EVTYPE=='HIGH WINDS',]$EVTYPE2 <- 'HIGH WIND'
-data[data$EVTYPE=='HIGH WIND AND HIGH TIDES',]$EVTYPE2 <- 'HIGH WIND'
+data$EVTYPE2[grepl('.*T.*WIND.*', data$EVTYPE2)] <- 'THUNDERSTORM WIND'
 
-data[data$EVTYPE=='TSTM WIND',]$EVTYPE2 <- 'THUNDERSTORM WIND'
-data[data$EVTYPE=='THUNDERSTORM WINDS',]$EVTYPE2 <- 'THUNDERSTORM WIND'
-data[data$EVTYPE=='THUNDERSTORM WINS',]$EVTYPE2 <- 'THUNDERSTORM WIND'
-data[data$EVTYPE=='THUNDERSTORM WINDS LIGHTNING',]$EVTYPE2 <- 'THUNDERSTORM WIND'
-data[data$EVTYPE=='THUNDERSTORM WINDS/HAIL',]$EVTYPE2 <- 'THUNDERSTORM WIND'
-data[data$EVTYPE=='THUNDERSTORM WINDS HAIL',]$EVTYPE2 <- 'THUNDERSTORM WIND'
-data[data$EVTYPE=='THUNDERSTORM',]$EVTYPE2 <- 'LIGHTNING'
-data[data$EVTYPE=='LIGHTING',]$EVTYPE2 <- 'LIGHTNING'
-data[data$EVTYPE=='LIGHTNING AND HEAVY RAIN',]$EVTYPE2 <- 'LIGHTNING'
-data[data$EVTYPE=='LIGHTNING/HEAVY RAIN',]$EVTYPE2 <- 'LIGHTNING'
+data$EVTYPE2[grepl('HIGH WIND.*', data$EVTYPE2)] <- 'HIGH WIND'
+data$EVTYPE2[grepl('WIND.*', data$EVTYPE2)] <- 'HIGH WIND'
+data$EVTYPE2[grepl('.*MICROBURST.*', data$EVTYPE2)] <- 'HIGH WIND'
+data$EVTYPE2[grepl('.*MICOBURST.*', data$EVTYPE2)] <- 'HIGH WIND'
+data$EVTYPE2[grepl('DOWNBURST.*', data$EVTYPE2)] <- 'HIGH WIND'
+data$EVTYPE2[grepl('.*WND.*', data$EVTYPE2)] <- 'HIGH WIND'
 
-data[data$EVTYPE=='HEAVY RAINS',]$EVTYPE2 <- 'HEAVY RAIN'
-data[data$EVTYPE=='HEAVY RAIN/LIGHTNING',]$EVTYPE2 <- 'HEAVY RAIN'
-data[data$EVTYPE=='HIGH WINDS HEAVY RAINS',]$EVTYPE2 <- 'HEAVY RAIN'
+data$EVTYPE2[grepl('.*TORN.*', data$EVTYPE2)] <- 'TORNADO'
+data$EVTYPE2[grepl('.*NADO.*', data$EVTYPE2)] <- 'TORNADO'
 
-data[data$EVTYPE=='FREEZING RAIN',]$EVTYPE2 <- 'WINTER WEATHER'
-data[data$EVTYPE=='SNOW',]$EVTYPE2 <- 'WINTER WEATHER'
-data[data$EVTYPE=='SNOW/ICE',]$EVTYPE2 <- 'WINTER WEATHER'
-data[data$EVTYPE=='BLIZZARD WEATHER',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='HIGH WIND/BLIZZARD',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='BLIZZARD/HIGH WIND',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='HIGH WIND/ BLIZZARD',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='HIGH WIND AND HEAVY SNOW',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='HIGH WIND/BLIZZARD/FREEZING RA',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='HEAVY SNOW/HIGH',]$EVTYPE2 <- 'BLIZZARD'
-data[data$EVTYPE=='ICE STORM/FLASH FLOOD',]$EVTYPE2 <- 'ICE STORM'
+data$EVTYPE2[grepl('FUN.*', data$EVTYPE2)] <- 'FUNNEL CLOUD'
+data$EVTYPE2[grepl('.*WALL.*', data$EVTYPE2)] <- 'FUNNEL CLOUD'
+data$EVTYPE2[grepl('.*SPOUT.*', data$EVTYPE2)] <- 'WATERSPOUT'
 
-data[data$EVTYPE=='HURRICANE OPAL/HIGH WINDS',]$EVTYPE2 <- 'HURRICANE (TYPHOON)'
-data[data$EVTYPE=='HURRICANE ERIN',]$EVTYPE2 <- 'HURRICANE (TYPHOON)'
-data[data$EVTYPE=='HURRICANE OPAL',]$EVTYPE2 <- 'HURRICANE (TYPHOON)'
+data$EVTYPE2[grepl('HAIL.*', data$EVTYPE2)] <- 'HAIL'
 
-data[data$EVTYPE=='COLD',]$EVTYPE2 <- 'COLD/WIND CHILL'
-data[data$EVTYPE=='FREEZE',]$EVTYPE2 <- 'FROST/FREEZE'
-data[data$EVTYPE=='WIND CHILL',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
-data[data$EVTYPE=='EXTREME COLD',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
-data[data$EVTYPE=='HIGH WIND/LOW WIND CHILL',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
-data[data$EVTYPE=='RECORD COLD',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
-data[data$EVTYPE=='RECORD LOW',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
-data[data$EVTYPE=='RECORD COLD AND HIGH WIND',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
-data[data$EVTYPE=='HIGH WINDS AND WIND CHILL',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data$EVTYPE2[grepl('.*LIGHTN.*', data$EVTYPE2)] <- 'LIGHTNING'
+data$EVTYPE2[grepl('.*LIGHTI.*', data$EVTYPE2)] <- 'LIGHTNING'
+data$EVTYPE2[grepl('.*LIGNTN.*', data$EVTYPE2)] <- 'LIGHTNING'
 
-data[data$EVTYPE=='RECORD HIGH TEMPERATURE',]$EVTYPE2 <- 'EXCESSIVE HEAT'
-data[data$EVTYPE=='RECORD HIGH',]$EVTYPE2 <- 'EXCESSIVE HEAT'
+data$EVTYPE2[grepl('.*FLASH.*', data$EVTYPE2)] <- 'FLASH FLOOD'
+data$EVTYPE2[grepl('.*DAM.*', data$EVTYPE2)] <- 'FLASH FLOOD'
 
-data[data$EVTYPE=='FLASH FLOODING/THUNDERSTORM WI',]$EVTYPE2 <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOODING',]$EVTYPE2 <- 'FLASH FLOOD'
-data[data$EVTYPE=='BREAKUP FLOODING',]$EVTYPE2 <- 'FLOOD'
-data[data$EVTYPE=='FLOODING',]$EVTYPE2 <- 'FLOOD'
-data[data$EVTYPE=='RIVER FLOOD',]$EVTYPE2 <- 'FLOOD'
-data[data$EVTYPE=='HIGH TIDES',]$EVTYPE2 <- 'STORM SURGE/TIDE'
-data[data$EVTYPE=='TORNADO F0',]$EVTYPE2 <- 'TORNADO'
-data[data$EVTYPE=='FUNNEL',]$EVTYPE2 <- 'FUNNEL CLOUD'
-data[data$EVTYPE=='WALL CLOUD',]$EVTYPE2 <- 'FUNNEL CLOUD'
-data[data$EVTYPE=='WALL CLOUD/FUNNEL CLOUD',]$EVTYPE2 <- 'FUNNEL CLOUD'
+data$EVTYPE2[grepl('.*FLOOD.*', data$EVTYPE2) &
+               !grepl('.*FLASH.*', data$EVTYPE2)] <- 'FLOOD'
+data$EVTYPE2[grepl('.*URBAN.*SMALL.*', data$EVTYPE2)] <- 'FLOOD'
+data$EVTYPE2[grepl('.*URBAN.*SML.*', data$EVTYPE2)] <- 'FLOOD'
+data$EVTYPE2[grepl('.*SMALL.*STR.*', data$EVTYPE2)] <- 'FLOOD'
+data$EVTYPE2[grepl('.*RAPID.*RIS.*.*WAT.*', data$EVTYPE2)] <- 'FLOOD'
+data$EVTYPE2[grepl('.*SML.*STR.*', data$EVTYPE2)] <- 'FLOOD'
 
-data[data$EVTYPE=='HAIL 1.75)',]$EVTYPE2 <- 'HAIL'
+data$EVTYPE2[grepl('.*HURR.*', data$EVTYPE2)] <- 'HURRICANE (TYPHOON)'
+data$EVTYPE2[grepl('.*TYPH.*', data$EVTYPE2)] <- 'HURRICANE (TYPHOON)'
+data$EVTYPE2[grepl('.*TROP.*STORM.*', data$EVTYPE2)] <- 'TROPICAL STORM'
 
-#x <- unique(data$EVTYPE2)
-#x <- x[order(x)]
-#x
+data$EVTYPE2[grepl('.*HEAVY.*RAIN.*', data$EVTYPE2)] <- 'HEAVY RAIN'
+data$EVTYPE2[grepl('.*HEAVY.*PREC.*', data$EVTYPE2)] <- 'HEAVY RAIN'
+data$EVTYPE2[grepl('.*REC.*RAIN.*', data$EVTYPE2)] <- 'HEAVY RAIN'
+data$EVTYPE2[grepl('RAIN', data$EVTYPE2)] <- 'HEAVY RAIN'
 
-x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in% event.types)])
+data$EVTYPE2[grepl('.*THUNDER.*', data$EVTYPE2)] <- 'THUNDERSTORM WIND'
+
+data$EVTYPE2[grepl('.*EXTREME COLD.*', data$EVTYPE2)] <- 'EXTREME COLD/WIND CHILL'
+data$EVTYPE2[grepl('.*RECORD COLD.*', data$EVTYPE2)] <- 'EXTREME COLD/WIND CHILL'
+data$EVTYPE2[grepl('.*RECORD LOW.*', data$EVTYPE2)] <- 'EXTREME COLD/WIND CHILL'
+data$EVTYPE2[grepl('.*LOW TEMP.*', data$EVTYPE2)] <- 'EXTREME COLD/WIND CHILL'
+
+data$EVTYPE2[grepl('.*COLD*', data$EVTYPE2)] <- 'COLD/WIND CHILL'
+
+data$EVTYPE2[grepl('.*BLIZZ.*', data$EVTYPE2)] <- 'BLIZZARD'
+data$EVTYPE2[grepl('HEAVY SN*', data$EVTYPE2) &
+               grepl('.*HIGH*', data$EVTYPE2)] <- 'BLIZZARD'
+
+data$EVTYPE2[grepl('.*FREEZING R.*', data$EVTYPE2)] <- 'WINTER WEATHER'
+data$EVTYPE2[grepl('.*SLEET.*', data$EVTYPE2)] <- 'WINTER WEATHER'
+data$EVTYPE2[grepl('.*SNOW.*', data$EVTYPE2)] <- 'WINTER WEATHER'
+data$EVTYPE2[grepl('.*WINT.*STOR.*', data$EVTYPE2)] <- 'WINTER WEATHER'
+data$EVTYPE2[grepl('.*WINT.*MIX.*', data$EVTYPE2)] <- 'WINTER WEATHER'
+data$EVTYPE2[grepl('.*FREEZ.*DRIZ.*', data$EVTYPE2)] <- 'WINTER WEATHER'
+
+data$EVTYPE2[grepl('.*ICE.*', data$EVTYPE2)] <- 'ICE STORM'
+data$EVTYPE2[grepl('.*GLAZ.*', data$EVTYPE2)] <- 'ICE STORM'
+
+data$EVTYPE2[grepl('.*FREEZE.*', data$EVTYPE2)] <- 'FROST/FREEZE'
+data$EVTYPE2[grepl('.*FROST.*', data$EVTYPE2)] <- 'FROST/FREEZE'
+
+data$EVTYPE2[grepl('.*RECORD HEAT.*', data$EVTYPE2)] <- 'EXCESSIVE HEAT'
+data$EVTYPE2[grepl('.*RECORD WARM.*', data$EVTYPE2)] <- 'EXCESSIVE HEAT'
+data$EVTYPE2[grepl('.*RECORD HIGH.*', data$EVTYPE2)] <- 'EXCESSIVE HEAT'
+data$EVTYPE2[grepl('.*HIGH TEMP.*', data$EVTYPE2)] <- 'EXCESSIVE HEAT'
+
+data$EVTYPE2[grepl('.*HEAT.*', data$EVTYPE2) &
+               !grepl('.*RECORD H.*', data$EVTYPE2)] <- 'HEAT'
+data$EVTYPE2[grepl('.*WARM.*', data$EVTYPE2)] <- 'HEAT'
+data$EVTYPE2[grepl('.*HOT.*WEATH.*', data$EVTYPE2)] <- 'HEAT'
+
+data$EVTYPE2[grepl('.*HIGH.*TIDE.*', data$EVTYPE2)] <- 'STORM SURGE/TIDE'
+data$EVTYPE2[grepl('.*STORM.*SURG.*', data$EVTYPE2)] <- 'STORM SURGE/TIDE'
+data$EVTYPE2[grepl('.*COAST.*SURG.*', data$EVTYPE2)] <- 'STORM SURGE/TIDE'
+
+data$EVTYPE2[grepl('.*HIGH.*SEA.*', data$EVTYPE2)] <- 'HIGH SURF'
+data$EVTYPE2[grepl('.*HIGH.*WAV.*', data$EVTYPE2)] <- 'HIGH SURF'
+data$EVTYPE2[grepl('.*HEAV.*SEA.*', data$EVTYPE2)] <- 'HIGH SURF'
+data$EVTYPE2[grepl('.*HEAV.*SURF.*', data$EVTYPE2)] <- 'HIGH SURF'
+data$EVTYPE2[grepl('.*HAZ.*SURF.*', data$EVTYPE2)] <- 'HIGH SURF'
+
+data$EVTYPE2[grepl('.*DUST.*', data$EVTYPE2)] <- 'DUST STORM'
+data$EVTYPE2[grepl('.*BLOW.*DUST.*', data$EVTYPE2)] <- 'DUST STORM'
+
+data$EVTYPE2[grepl('.*FIRE.*', data$EVTYPE2)] <- 'WILDFIRE'
+
+data$EVTYPE2[grepl('.*VOLC.*', data$EVTYPE2)] <- 'VOLCANIC ASH'
+
+# Report on what's left that doesn't fit
+x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)])
 length(x)
-head(x,12)
+x
+
+# Collect the remaining ones into 'OTHER'
+data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)] <- 'OTHER'
 ```
 
 ```{r harm-to-population}
+# Generate a plot to answer
+#
+#   Across the United States, which types of events (as indicated
+#   in the EVTYPE variable) are most harmful with respect to
+#   population health?
+#
+
+# 1994 is when data reporting picked up, start with data
+# from then onward.
 DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
+
+# aggregate harm to people by event type. Get top 25.
 results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE]
 results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
 top25 <- head(results, 25)
 
+# Plot them.
 p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1)) +
   geom_bar(stat='identity', fill='blue') +
   coord_flip() +
   scale_y_continuous(labels = comma) +
-  ggtitle('Weather Events Affecting the Population - Top 25\nFatalities and Injuries\nJan. 1994 - Nov. 2011') +
+  ggtitle('United States\nWeather Events and Population Harm - Top 25\n* Fatalities and Injuries *\nJan. 1994 - Nov. 2011') +
   xlab('Weather Event') +
-  ylab('Nbr Injuries and Fatalities')
+  ylab('Number of Fatalities and Injuries')
 print(p)
 
-head(top25,2)
+# Numbers for the Top 2?
+x <- head(top25, 2)
+x$V1 <- format(x$V1, big.mark=",", scientific=F)
+setnames(x, c('Event', 'Fatalities and Injuries'))
+x
 ```
 
 ```{r economic-consequences}
-# excessive guesswork. those field guys need better data entry
-# software so that a bunch of unnecessary hooey isn't flooding
-# our data. (Ha, ha. Get it? 'flooding'? ha!)
+# Generate a plot to answer:
+#
+#   Across the United States, which types of events have the
+#   greatest economic consequences?
+#
 
-# PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP 
+# For economic impact, we care about:
+#   PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP 
+#
 # EXP: “K” for thousands, “M” for millions, and “B” for billions
 
 # > unique(data$CROPDMGEXP)
@@ -236,6 +302,8 @@ head(top25,2)
 #  [1] K M   B m + 0 5 6 ? 4 2 3 h 7 H - 1 8
 # Levels:  + - 0 1 2 3 4 5 6 7 8 ? B H K M h m
 
+# We need a vectorized function to translate the "EXP" character
+# into a multiplier value.
 get.multiplier <- function(ch) {
   return(
     switch(EXPR = ch,
@@ -248,25 +316,36 @@ get.multiplier <- function(ch) {
 }
 v.get.multiplier <- Vectorize(get.multiplier)
 
+# some cleanup for sanity
 data$PROPDMGEXP <- toupper(str_trim(data$PROPDMGEXP))
 data$CROPDMGEXP <- toupper(str_trim(data$CROPDMGEXP))
 
+# calc the amount
 data$PROPDMG_CALC <- data$PROPDMG * v.get.multiplier(data$PROPDMGEXP)
 data$CROPDMG_CALC <- data$CROPDMG * v.get.multiplier(data$CROPDMGEXP)
 
+# 1994 is when data reporting picked up, start with data
+# from then onward.
 DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
+
+# aggregate damage by event type and get the top 25
 results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = EVTYPE]
 results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
 top25 <- head(results, 25)
 
-p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1)) +
+# now plot it (show damage in terms of billions of dollars)
+p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1/1000000000)) +
   geom_bar(stat='identity', fill='blue') +
   coord_flip() +
   scale_y_continuous(labels = comma) +
-  ggtitle('Weather Events and Economic Consequences - Top 25\nProperty and Crop Damange\nJan. 1994 - Nov. 2011') +
+  ggtitle('United States\nWeather Events and Economic Harm - Top 25\n* Property and Crop Damange *\nJan. 1994 - Nov. 2011') +
   xlab('Weather Event') +
-  ylab('Nbr Injuries and Fatalities')
+  ylab('Damage in Billions USD')
 print(p)
 
-head(top25,2)
+# Numbers for the Top 2?
+x <- head(top25, 2)
+x$V1 <- format(x$V1/1000000000, big.mark=",", scientific=F)
+setnames(x, c('Event', 'Damage - Billions'))
+x
 ```
