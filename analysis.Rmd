@@ -1,4 +1,11 @@
-We need a title!
+---
+title: "Analysis of Storm Events"
+output:
+  html_document:
+    self_contained: true
+---
+
+Analysis Of Storm Events
 ========================================================
 
 Two questions to answer:
@@ -7,6 +14,12 @@ Two questions to answer:
 
 2. Across the United States, which types of events have the greatest economic consequences?
 
+```{r libraries}
+library(stringr)
+library(data.table)
+library(scales)
+library(ggplot2)
+```
 
 ```{r get-raw-data, cache=TRUE}
 # read the data - read.csv can handle bz2 files. This is a long
@@ -16,8 +29,6 @@ raw.data <- read.csv(file = 'repdata-data-StormData.csv.bz2',
 ```
 
 ```{r examine-raw-data, echo=FALSE}
-library(stringr)
-
 # Q: which columns have NA values?
 #
 # A: 'COUNTYENDN', 'F', 'LATITUDE', 'LATITUDE_E'
@@ -26,19 +37,14 @@ sapply(raw.data, function(x) ifelse(sum(is.na(x)) > 0, x, 0))
 # what about EVTYPE? seems like some are the same but for caps
 length(unique(raw.data$EVTYPE))          # 985
 length(unique(toupper(raw.data$EVTYPE))) # 898
-
-raw.data$EVTYPE <- toupper(str_trim(raw.data$EVTYPE))
-x <- unique(raw.data$EVTYPE)
-x <- x[order(x)]
-x
 ```
 
-```{r process-raw-data}
-# Event Types are messy. Start by making everything the
-# same case.
+
+```{r process-raw-data, echo=TRUE}
 data <- raw.data
 
-# type conversions
+
+# date type conversions
 data$BGN_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
 data$END_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
 
@@ -55,109 +61,148 @@ p <- ggplot(results, aes(x=Year, y=Count)) +
   scale_y_continuous(labels = comma)
 print(p)
 
-# value conversions
-data$EVTYPE <- toupper(str_trim(data$EVTYPE))
+# Event Types are messy.
+# valid event types from the docs
+event.types <- c(
+  'Astronomical Low Tide',
+  'Avalanche',
+  'Blizzard',
+  'Coastal Flood',
+  'Cold/Wind Chill',
+  'Debris Flow',
+  'Dense Fog',
+  'Dense Smoke',
+  'Drought',
+  'Dust Devil',
+  'Dust Storm',
+  'Excessive Heat',
+  'Extreme Cold/Wind Chill',
+  'Flash Flood',
+  'Flood',
+  'Frost/Freeze',
+  'Funnel Cloud',
+  'Freezing Fog',
+  'Hail',
+  'Heat',
+  'Heavy Rain',
+  'Heavy Snow',
+  'High Surf',
+  'High Wind',
+  'Hurricane (Typhoon)',
+  'Ice Storm',
+  'Lake-Effect Snow',
+  'Lakeshore Flood',
+  'Lightning',
+  'Marine Hail',
+  'Marine High Wind',
+  'Marine Strong Wind',
+  'Marine Thunderstorm Wind',
+  'Rip Current',
+  'Seiche',
+  'Sleet',
+  'Storm Surge/Tide',
+  'Strong Wind',
+  'Thunderstorm Wind',
+  'Tornado',
+  'Tropical Depression',
+  'Tropical Storm',
+  'Tsunami',
+  'Volcanic Ash',
+  'Waterspout',
+  'Wildfire',
+  'Winter Storm',
+  'Winter Weather'
+)
+event.types <- toupper(event.types)
 
-# Now map similar dups to a single EVTYPE. We don't want
-# to get carried away generalizing, but we should re-code
-# for typos and the like. A bit yucky, but we'll be sure
-# to include the corrective actions in our report.
-data[data$EVTYPE=='AVALANCE',]$EVTYPE <- 'AVALANCHE'
-data[data$EVTYPE=='BEACH EROSIN',]$EVTYPE <- 'BEACH EROSION'
-data[data$EVTYPE=='BITTER WIND CHILL TEMPERATURES',]$EVTYPE <- 'EXTREME WIND CHILL'
-data[data$EVTYPE=='BLIZZARD AND EXTREME WIND CHIL',]$EVTYPE <- 'BLIZZARD AND EXTREME WIND CHILL'
-data[data$EVTYPE=='BLIZZARD WEATHER',]$EVTYPE <- 'BLIZZARD'
-data[data$EVTYPE=='BLOW-OUT TIDES',]$EVTYPE <- 'BLOW-OUT TIDE'
-data[data$EVTYPE=='BLOWING SNOW- EXTREME WIND CHI',]$EVTYPE <- 'BLOWING SNOW/EXTREME WIND CHILL'
-data[data$EVTYPE=='BLOWING SNOW/EXTREME WIND CHIL',]$EVTYPE <- 'BLOWING SNOW/EXTREME WIND CHILL'
-data[data$EVTYPE=='BRUSH FIRE',]$EVTYPE <- 'BRUSH FIRES'
-data[data$EVTYPE=='COASTAL  FLOODING/EROSION',]$EVTYPE <- 'COASTAL FLOODING/EROSION'
-data[data$EVTYPE=='CSTL FLOODING/EROSION',]$EVTYPE <- 'COASTAL FLOODING/EROSION'
-data[data$EVTYPE=='COASTAL FLOOD',]$EVTYPE <- 'COASTAL FLOODING'
-data[data$EVTYPE=='COASTALFLOOD',]$EVTYPE <- 'COASTAL FLOODING'
-data[data$EVTYPE=='COASTALSTORM',]$EVTYPE <- 'COASTAL STORM'
-data[data$EVTYPE=='COLD',]$EVTYPE <- 'COLD WEATHER'
-data[data$EVTYPE=='COLD AIR FUNNELS',]$EVTYPE <- 'COLD AIR FUNNEL'
-data[data$EVTYPE=='COLD WIND CHILL TEMPERATURES',]$EVTYPE <- 'COLD/WIND CHILL'
-data[data$EVTYPE=='DAM BREAK',]$EVTYPE <- 'DAM FAILURE'
-data[data$EVTYPE=='DOWNBURST WINDS',]$EVTYPE <- 'DOWNBURST'
-data[data$EVTYPE=='DRY CONDITIONS',]$EVTYPE <- 'DRY'
-data[data$EVTYPE=='DRY SPELL',]$EVTYPE <- 'DRY'
-data[data$EVTYPE=='DRY WEATHER',]$EVTYPE <- 'DRY'
-data[data$EVTYPE=='DRYNESS',]$EVTYPE <- 'DRY'
-data[data$EVTYPE=='DUSTSTORM',]$EVTYPE <- 'DUST STORM'
-data[data$EVTYPE=='EARLY SNOW',]$EVTYPE <- 'EARLY SNOWFALL'
-data[data$EVTYPE=='EROSION/CSTL FLOOD',]$EVTYPE <- 'COASTAL FLOOD/EROSION'
-data[data$EVTYPE=='EXCESSIVE RAIN',]$EVTYPE <- 'EXCESSIVE RAINFALL'
-data[data$EVTYPE=='EXTREME WIND CHILL',]$EVTYPE <- 'EXTREME WINDCHILL'
-data[data$EVTYPE=='EXTREME WINDCHILL TEMPERATURES',]$EVTYPE <- 'EXTREME WINDCHILL'
-data[data$EVTYPE=='EXTREME WIND CHILLS',]$EVTYPE <- 'EXTREME WINDCHILL'
-data[data$EVTYPE=='EXTREME WIND CHILL/BLOWING SNO',]$EVTYPE <- 'EXTREME WINDCHILL/BLOWING SNOW'
-data[data$EVTYPE=='FLASH FLOODING',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOOODING',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOODING/FLOOD',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOODS',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOOD LANDSLIDES',]$EVTYPE <- 'FLASH FLOOD/LANDSLIDE'
-data[data$EVTYPE=='FLOOD/FLASH',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLOOD/FLASH FLOODING',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLOOD FLOOD/FLASH',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLOOD/FLASHFLOOD',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLOOD/FLASH/FLOOD',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLOOD/FLASH FLOOD',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOOD/',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLASH FLOOD/ FLOOD',]$EVTYPE <- 'FLASH FLOOD'
-data[data$EVTYPE=='FLOOD WATCH/',]$EVTYPE <- 'FLOOD WATCH'
-data[data$EVTYPE=='FLOODS',]$EVTYPE <- 'FLOOD'
-data[data$EVTYPE=='FLOODING',]$EVTYPE <- 'FLOOD'
-data[data$EVTYPE=='FLOOD/RAIN/WINDS',]$EVTYPE <- 'FLOOD/RAIN/WIND'
-data[data$EVTYPE=='FLOOD & HEAVY RAIN',]$EVTYPE <- 'FLOOD/HEAVY RAIN'
-data[data$EVTYPE=='FROST\\FREEZE',]$EVTYPE <- 'FROST/FREEZE'
-data[data$EVTYPE=='FREEZING DRIZZLE AND FREEZING',]$EVTYPE <- 'FREEZING DRIZZLE AND FREEZING RAIN'
-data[data$EVTYPE=='FREEZING RAIN SLEET AND',]$EVTYPE <- 'FREEZING RAIN SLEET AND SNOW'
-data[data$EVTYPE=='FREEZING RAIN/SLEET',]$EVTYPE <- 'FREEZING RAIN AND SLEET'
-data[data$EVTYPE=='FREEZING RAIN/SNOW',]$EVTYPE <- 'FREEZING RAIN AND SNOW'
-data[data$EVTYPE=='FUNNEL CLOUD.',]$EVTYPE <- 'FUNNEL CLOUD'
-data[data$EVTYPE=='FUNNEL CLOUDS',]$EVTYPE <- 'FUNNEL CLOUD'
-data[data$EVTYPE=='FUNNELS',]$EVTYPE <- 'FUNNEL'
-data[data$EVTYPE=='GLAZE',]$EVTYPE <- 'GLAZE ICE'
-data[data$EVTYPE=='GRADIENT WIND',]$EVTYPE <- 'GRADIENT WINDS'
-data[data$EVTYPE=='GUSTNADO AND',]$EVTYPE <- 'GUSTNADO'
-data[data$EVTYPE=='GUSTY WIND',]$EVTYPE <- 'GUSTY WINDS'
-data[data$EVTYPE=='HAILSTORM',]$EVTYPE <- 'HAIL'
-data[data$EVTYPE=='HAILSTORMS',]$EVTYPE <- 'HAIL'
-data[data$EVTYPE=='HAIL STORM',]$EVTYPE <- 'HAIL'
-data[data$EVTYPE=='WATER SPOUT',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WATERSPOUT-',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WATERSPOUT TORNADO',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WATERSPOUT-TORNADO',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WATERSPOUT/ TORNADO',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WATERSPOUT/TORNADO',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WATERSPOUTS',]$EVTYPE <- 'WATERSPOUT'
-data[data$EVTYPE=='WILD/FOREST FIRE',]$EVTYPE <- 'WILDFIRE'
-data[data$EVTYPE=='WILD/FOREST FIRES',]$EVTYPE <- 'WILDFIRE'
-data[data$EVTYPE=='WILD FIRES',]$EVTYPE <- 'WILDFIRE'
-data[data$EVTYPE=='WILDFIRES',]$EVTYPE <- 'WILDFIRE'
-data[data$EVTYPE=='WIND',]$EVTYPE <- 'WINDS'
-data[data$EVTYPE=='WINTER MIX',]$EVTYPE <- 'WINTRY MIX'
-data[data$EVTYPE=='WINTERY MIX',]$EVTYPE <- 'WINTRY MIX'
-data[data$EVTYPE=='WINTER WEATHER/MIX',]$EVTYPE <- 'WINTRY MIX'
-data[data$EVTYPE=='WINTER WEATHER MIX',]$EVTYPE <- 'WINTRY MIX'
-data[data$EVTYPE=='WND',]$EVTYPE <- 'WIND'
-data[data$EVTYPE=='WINDS',]$EVTYPE <- 'WIND'
-data[data$EVTYPE=='WINTER STORMS',]$EVTYPE <- 'WINTER STORM'
-data[data$EVTYPE=='WINTER STORM/HIGH WIND',]$EVTYPE <- 'WINTER STORM/HIGH WINDS'
-data[data$EVTYPE=='WINTER STORM HIGH WINDS',]$EVTYPE <- 'WINTER STORM/HIGH WINDS'
+# Now clean up a bunch of event types as best we can. We don't want
+# to get carried away generalizing, but we should make some effort
 
-x <- unique(data$EVTYPE)
-x <- x[order(x)]
-x
+# lets ease our data cleanup effort a bit. For now, we'll only look
+# at events that have FATALITIES, INJURIES, PROPDMG, CROPDMG as those
+# are the areas that we'll be focusing on in this analysis.
+
+data <- subset(data, !is.na(FATALITIES) |
+                 !is.na(INJURIES) |
+                 !is.na(PROPDMG) |
+                 !is.na(CROPDMG)
+               )
+
+data$EVTYPE2 <- toupper(str_trim(data$EVTYPE))
+
+data[data$EVTYPE=='AVALANCE',]$EVTYPE2 <- 'AVALANCHE'
+
+data[data$EVTYPE=='WIND',]$EVTYPE2 <- 'HIGH WIND'
+data[data$EVTYPE=='HIGH WINDS',]$EVTYPE2 <- 'HIGH WIND'
+data[data$EVTYPE=='HIGH WIND AND HIGH TIDES',]$EVTYPE2 <- 'HIGH WIND'
+
+data[data$EVTYPE=='TSTM WIND',]$EVTYPE2 <- 'THUNDERSTORM WIND'
+data[data$EVTYPE=='THUNDERSTORM WINDS',]$EVTYPE2 <- 'THUNDERSTORM WIND'
+data[data$EVTYPE=='THUNDERSTORM WINS',]$EVTYPE2 <- 'THUNDERSTORM WIND'
+data[data$EVTYPE=='THUNDERSTORM WINDS LIGHTNING',]$EVTYPE2 <- 'THUNDERSTORM WIND'
+data[data$EVTYPE=='THUNDERSTORM WINDS/HAIL',]$EVTYPE2 <- 'THUNDERSTORM WIND'
+data[data$EVTYPE=='THUNDERSTORM WINDS HAIL',]$EVTYPE2 <- 'THUNDERSTORM WIND'
+data[data$EVTYPE=='THUNDERSTORM',]$EVTYPE2 <- 'LIGHTNING'
+data[data$EVTYPE=='LIGHTING',]$EVTYPE2 <- 'LIGHTNING'
+data[data$EVTYPE=='LIGHTNING AND HEAVY RAIN',]$EVTYPE2 <- 'LIGHTNING'
+data[data$EVTYPE=='LIGHTNING/HEAVY RAIN',]$EVTYPE2 <- 'LIGHTNING'
+
+data[data$EVTYPE=='HEAVY RAINS',]$EVTYPE2 <- 'HEAVY RAIN'
+data[data$EVTYPE=='HEAVY RAIN/LIGHTNING',]$EVTYPE2 <- 'HEAVY RAIN'
+data[data$EVTYPE=='HIGH WINDS HEAVY RAINS',]$EVTYPE2 <- 'HEAVY RAIN'
+
+data[data$EVTYPE=='FREEZING RAIN',]$EVTYPE2 <- 'WINTER WEATHER'
+data[data$EVTYPE=='SNOW',]$EVTYPE2 <- 'WINTER WEATHER'
+data[data$EVTYPE=='SNOW/ICE',]$EVTYPE2 <- 'WINTER WEATHER'
+data[data$EVTYPE=='BLIZZARD WEATHER',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='HIGH WIND/BLIZZARD',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='BLIZZARD/HIGH WIND',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='HIGH WIND/ BLIZZARD',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='HIGH WIND AND HEAVY SNOW',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='HIGH WIND/BLIZZARD/FREEZING RA',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='HEAVY SNOW/HIGH',]$EVTYPE2 <- 'BLIZZARD'
+data[data$EVTYPE=='ICE STORM/FLASH FLOOD',]$EVTYPE2 <- 'ICE STORM'
+
+data[data$EVTYPE=='HURRICANE OPAL/HIGH WINDS',]$EVTYPE2 <- 'HURRICANE (TYPHOON)'
+data[data$EVTYPE=='HURRICANE ERIN',]$EVTYPE2 <- 'HURRICANE (TYPHOON)'
+data[data$EVTYPE=='HURRICANE OPAL',]$EVTYPE2 <- 'HURRICANE (TYPHOON)'
+
+data[data$EVTYPE=='COLD',]$EVTYPE2 <- 'COLD/WIND CHILL'
+data[data$EVTYPE=='FREEZE',]$EVTYPE2 <- 'FROST/FREEZE'
+data[data$EVTYPE=='WIND CHILL',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data[data$EVTYPE=='EXTREME COLD',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data[data$EVTYPE=='HIGH WIND/LOW WIND CHILL',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data[data$EVTYPE=='RECORD COLD',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data[data$EVTYPE=='RECORD LOW',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data[data$EVTYPE=='RECORD COLD AND HIGH WIND',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+data[data$EVTYPE=='HIGH WINDS AND WIND CHILL',]$EVTYPE2 <- 'EXTREME COLD/WIND CHILL'
+
+data[data$EVTYPE=='RECORD HIGH TEMPERATURE',]$EVTYPE2 <- 'EXCESSIVE HEAT'
+data[data$EVTYPE=='RECORD HIGH',]$EVTYPE2 <- 'EXCESSIVE HEAT'
+
+data[data$EVTYPE=='FLASH FLOODING/THUNDERSTORM WI',]$EVTYPE2 <- 'FLASH FLOOD'
+data[data$EVTYPE=='FLASH FLOODING',]$EVTYPE2 <- 'FLASH FLOOD'
+data[data$EVTYPE=='BREAKUP FLOODING',]$EVTYPE2 <- 'FLOOD'
+data[data$EVTYPE=='FLOODING',]$EVTYPE2 <- 'FLOOD'
+data[data$EVTYPE=='RIVER FLOOD',]$EVTYPE2 <- 'FLOOD'
+data[data$EVTYPE=='HIGH TIDES',]$EVTYPE2 <- 'STORM SURGE/TIDE'
+data[data$EVTYPE=='TORNADO F0',]$EVTYPE2 <- 'TORNADO'
+data[data$EVTYPE=='FUNNEL',]$EVTYPE2 <- 'FUNNEL CLOUD'
+data[data$EVTYPE=='WALL CLOUD',]$EVTYPE2 <- 'FUNNEL CLOUD'
+data[data$EVTYPE=='WALL CLOUD/FUNNEL CLOUD',]$EVTYPE2 <- 'FUNNEL CLOUD'
+
+data[data$EVTYPE=='HAIL 1.75)',]$EVTYPE2 <- 'HAIL'
+
+#x <- unique(data$EVTYPE2)
+#x <- x[order(x)]
+#x
+
+x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in% event.types)])
+length(x)
+head(x,12)
 ```
 
-```{r population-harm}
-library(data.table)
-library(scales)
-library(ggplot2)
-
+```{r harm-to-population}
 DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
 results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE]
 results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
@@ -167,9 +212,61 @@ p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1)) +
   geom_bar(stat='identity', fill='blue') +
   coord_flip() +
   scale_y_continuous(labels = comma) +
-  ggtitle('Weather Events Affecting the Population - Top 25\nJan. 1994 - Nov. 2011') +
+  ggtitle('Weather Events Affecting the Population - Top 25\nFatalities and Injuries\nJan. 1994 - Nov. 2011') +
   xlab('Weather Event') +
   ylab('Nbr Injuries and Fatalities')
 print(p)
+
+head(top25,2)
 ```
 
+```{r economic-consequences}
+# excessive guesswork. those field guys need better data entry
+# software so that a bunch of unnecessary hooey isn't flooding
+# our data. (Ha, ha. Get it? 'flooding'? ha!)
+
+# PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP 
+# EXP: “K” for thousands, “M” for millions, and “B” for billions
+
+# > unique(data$CROPDMGEXP)
+#  [1]   M K m B ? 0 k 2
+# Levels:  0 2 ? B K M k m
+#
+# > unique(data$PROPDMGEXP)
+#  [1] K M   B m + 0 5 6 ? 4 2 3 h 7 H - 1 8
+# Levels:  + - 0 1 2 3 4 5 6 7 8 ? B H K M h m
+
+get.multiplier <- function(ch) {
+  return(
+    switch(EXPR = ch,
+           K = 1000,
+           M = 1000000,
+           B = 1000000000,
+           1
+           )
+  )
+}
+v.get.multiplier <- Vectorize(get.multiplier)
+
+data$PROPDMGEXP <- toupper(str_trim(data$PROPDMGEXP))
+data$CROPDMGEXP <- toupper(str_trim(data$CROPDMGEXP))
+
+data$PROPDMG_CALC <- data$PROPDMG * v.get.multiplier(data$PROPDMGEXP)
+data$CROPDMG_CALC <- data$CROPDMG * v.get.multiplier(data$CROPDMGEXP)
+
+DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
+results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = EVTYPE]
+results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
+top25 <- head(results, 25)
+
+p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1)) +
+  geom_bar(stat='identity', fill='blue') +
+  coord_flip() +
+  scale_y_continuous(labels = comma) +
+  ggtitle('Weather Events and Economic Consequences - Top 25\nProperty and Crop Damange\nJan. 1994 - Nov. 2011') +
+  xlab('Weather Event') +
+  ylab('Nbr Injuries and Fatalities')
+print(p)
+
+head(top25,2)
+```
