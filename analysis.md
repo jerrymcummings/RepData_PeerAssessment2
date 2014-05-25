@@ -1,73 +1,108 @@
 ---
-title: "Analysis of U.S. Weather Events"
-output:
-  html_document:
-    self_contained: true
+author: Jerry Cummings
+title: "Impact of U.S. Extreme Weather Events - 1994 to 2011"
+output: html_document
 ---
 
-Analysis Of U.S. Weather Events
+Impact of U.S. Extreme Weather Events - 1994 to 2011
 ========================================================
 
-Two questions to answer:
+Raw data from the National Climatic Data Center (NCDC)
+concerning weather events between 1950 and Nov. 2011 is
+analyzed for two topics of interest:
 
-1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+1. Across the United States, which types of events
+   are most harmful with respect to population health?
 
-2. Across the United States, which types of events have the greatest economic consequences?
+2. Across the United States, which types of events have
+   the greatest economic consequences?
 
+The data volume appears to be rather spotty before 1994, so
+our analysis focuses on data since 1-JAN-1994, or more than
+seventeen years worth. We find that:
+
+1. Tornadoes have outpaced every other weather event in
+   terms of fatalities and injuries during that time period,
+   with Heat the next most harmful.
+   
+2. Floods, Hurricanes and Tornadoes have been the most
+   impactful events in terms of damage as measured in U.S. dollars.
+
+Jerry Cummings  
+24-MAY-2014
+ 
+
+
+
+
+
+<HR>
+  
+Data Processing
+-----------------------------------------------------------------
 
 ```r
 library(stringr)
 library(data.table)
 library(scales)
 library(ggplot2)
+library(gridExtra)
 ```
 
+```
+## Loading required package: grid
+```
 
+  
+  
 
 ```r
-# read the data - read.csv can handle bz2 files. This is a long running
-# opreation, we'll want to cache it.
+# read the data - read.csv can handle bz2 files.
 raw.data <- read.csv(file = "repdata-data-StormData.csv.bz2", strip.white = TRUE)
 ```
 
+  
+  
 
 
-
-
-
+  
+  
+Make a copy of raw data with a name that reflects that
+it is NOT raw data.
 
 ```r
-# copy of raw data so that we can refer back if we need to
 data <- raw.data
-
-# date type conversions
-data$BGN_DATE <- as.Date(data$BGN_DATE, format = "%m/%d/%Y")
-data$END_DATE <- as.Date(data$BGN_DATE, format = "%m/%d/%Y")
-
-# states?
-unique(data$STATE)
+rm(raw.data)
 ```
 
-```
-##  [1] AL AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN
-## [24] MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA
-## [47] WA WV WI WY PR AK ST AS GU MH VI AM LC PH GM PZ AN LH LM LE LS SL LO
-## [70] PM PK XX
-## 72 Levels: AK AL AM AN AR AS AZ CA CO CT DC DE FL GA GM GU HI IA ID ... XX
-```
+  
+  
+Convert date columns to a Date datatype
 
 ```r
+data$BGN_DATE <- as.Date(data$BGN_DATE, format = "%m/%d/%Y")
+data$END_DATE <- as.Date(data$END_DATE, format = "%m/%d/%Y")
+data$Year <- as.numeric(format(data$BGN_DATE, "%Y"))
+```
 
-# some of those are states, some appear to be territories, and some to be
-# either fabricated on-the-fly or mistakes. I'm hesitant to change any for
-# this analysis.  PZ? maybe that's for Panama Canal Zone which is now
-# obsolete.  GM? maybe that's for Guam, which is GU?  LH? who knows?
+  
+  
+What does our weather event distribution look like? Start by
+getting a count for each BGN_DATE.
 
-# what does our weather event distribution look like?
+```r
 DT <- data.table(data)
-results <- DT[, length(BGN_DATE), by = as.numeric(format(BGN_DATE, "%Y"))]
+results <- DT[, length(BGN_DATE), by = Year]
 setnames(results, c("Year", "Count"))
+```
 
+  
+  
+Now plot it. After the first time we ran this, we noted
+that the data took a turn for the better in 1994, so let's
+annotate that.
+
+```r
 p <- ggplot(results, aes(x = Year, y = Count)) + geom_point(color = "blue") + 
     geom_vline(x = 1994, color = "red") + annotate("text", x = 1991, y = 55000, 
     label = "1994", color = "red") + ggtitle("Number of Weather Events Recorded Per Year") + 
@@ -75,11 +110,15 @@ p <- ggplot(results, aes(x = Year, y = Count)) + geom_point(color = "blue") +
 print(p)
 ```
 
-![plot of chunk process-raw-data](figure/process-raw-data.png) 
+![plot of chunk plot-date-counts](figure/plot-date-counts.png) 
+
+  
+  
+Move to event types. Event types in the data are all over the place. Let's start with
+the valid event types from the document. We'll just cut/paste from
+the PDF and then surround it with code.
 
 ```r
-
-# Here are the valid event types from the docs
 valid.event.types <- c("Astronomical Low Tide", "Avalanche", "Blizzard", "Coastal Flood", 
     "Cold/Wind Chill", "Debris Flow", "Dense Fog", "Dense Smoke", "Drought", 
     "Dust Devil", "Dust Storm", "Excessive Heat", "Extreme Cold/Wind Chill", 
@@ -90,22 +129,39 @@ valid.event.types <- c("Astronomical Low Tide", "Avalanche", "Blizzard", "Coasta
     "Seiche", "Sleet", "Storm Surge/Tide", "Strong Wind", "Thunderstorm Wind", 
     "Tornado", "Tropical Depression", "Tropical Storm", "Tsunami", "Volcanic Ash", 
     "Waterspout", "Wildfire", "Winter Storm", "Winter Weather")
-valid.event.types <- toupper(valid.event.types)
+valid.event.types <- toupper(valid.event.types)  # convenience
+```
 
-# Excessive messiness. Those field guys need better data entry software so
-# that a bunch of unnecessary hooey isn't flooding our data. (Ha, ha. Get
-# it? 'flooding'???)
+  
+  
+As we said, the raw data is chock full of messiness. Those field guys
+need better data entry software so that a bunch of unnecessary hooey
+isn't flooding our data. (Ha, ha. Get it? 'flooding'???)
+  
+Let's ease our data cleanup effort a bit. For now, we'll only look
+at events that have FATALITIES, INJURIES, PROPDMG, CROPDMG as those
+are the areas that we'll be focusing on in this analysis.
 
-# Let's ease our data cleanup effort a bit. For now, we'll only look at
-# events that have FATALITIES, INJURIES, PROPDMG, CROPDMG as those are the
-# areas that we'll be focusing on in this analysis.
+```r
 data <- subset(data, !is.na(FATALITIES) | !is.na(INJURIES) | !is.na(PROPDMG) | 
     !is.na(CROPDMG))
+```
 
-# uniformly upper case
+  
+  
+Make a new copy of the event types that we can muck
+around with. Go ahead and flip it to upper case and
+trim off leading/trailing whitespace.
+
+```r
 data$EVTYPE2 <- toupper(str_trim(data$EVTYPE))
+```
 
-# start making substitutions. Note: order matters
+  
+  
+Let's do some fixup. Note: order matters in this chunk of code!
+
+```r
 data$EVTYPE2[grepl(".*AVAL.*", data$EVTYPE2)] <- "AVALANCHE"
 
 data$EVTYPE2[grepl(".*T.*WIND.*", data$EVTYPE2)] <- "THUNDERSTORM WIND"
@@ -200,208 +256,206 @@ data$EVTYPE2[grepl(".*FIRE.*", data$EVTYPE2)] <- "WILDFIRE"
 
 data$EVTYPE2[grepl(".*VOLC.*", data$EVTYPE2)] <- "VOLCANIC ASH"
 
-# Report on what's left that doesn't fit
-x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)])
-length(x)
-```
+# During development, report on what's left that didn't get mapped to the
+# known types x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in%
+# valid.event.types)]) length(x) x
 
-```
-## [1] 167
-```
-
-```r
-x
-```
-
-```
-##   [1] "MARINE MISHAP"              "SEVERE TURBULENCE"         
-##   [3] "APACHE COUNTY"              "HIGH"                      
-##   [5] "MUDSLIDES"                  "UNSEASONABLY DRY"          
-##   [7] "UNSEASONABLY WET"           "NORMAL PRECIPITATION"      
-##   [9] "DRY"                        "MUD SLIDE"                 
-##  [11] "COOL AND WET"               "MUD SLIDES"                
-##  [13] "EXCESSIVE WETNESS"          "FOG"                       
-##  [15] "BELOW NORMAL PRECIPITATION" "RECORD TEMPERATURES"       
-##  [17] "OTHER"                      "MUDSLIDE"                  
-##  [19] "ICY ROADS"                  "HEAVY MIX"                 
-##  [21] "RIP CURRENTS"               "SOUTHEAST"                 
-##  [23] "HIGH WATER"                 "WET WEATHER"               
-##  [25] "BEACH EROSIN"               "HYPOTHERMIA"               
-##  [27] "MUD/ROCK SLIDE"             "TSTMW"                     
-##  [29] "LANDSLIDE"                  "EXCESSIVE"                 
-##  [31] "?"                          "HOT PATTERN"               
-##  [33] "EXCESSIVE PRECIPITATION"    "HOT/DRY PATTERN"           
-##  [35] "DRY PATTERN"                "MILD/DRY PATTERN"          
-##  [37] "MILD PATTERN"               "LANDSLIDES"                
-##  [39] "HEAVY SHOWERS"              "HEAVY SHOWER"              
-##  [41] "HEAVY SWELLS"               "RECORD DRY MONTH"          
-##  [43] "TEMPERATURE RECORD"         "ROUGH SURF"                
-##  [45] "MARINE ACCIDENT"            "COASTAL STORM"             
-##  [47] "WET MONTH"                  "WET YEAR"                  
-##  [49] "BEACH EROSION"              "HOT AND DRY"               
-##  [51] "LANDSLUMP"                  "RECORD TEMPERATURE"        
-##  [53] "MIXED PRECIP"               "FREEZING SPRAY"            
-##  [55] "SUMMARY JAN 17"             "SUMMARY OF MARCH 14"       
-##  [57] "SUMMARY OF MARCH 23"        "SUMMARY OF MARCH 24"       
-##  [59] "SUMMARY OF APRIL 3RD"       "SUMMARY OF APRIL 12"       
-##  [61] "SUMMARY OF APRIL 13"        "SUMMARY OF APRIL 21"       
-##  [63] "SUMMARY AUGUST 11"          "SUMMARY OF APRIL 27"       
-##  [65] "SUMMARY OF MAY 9-10"        "SUMMARY OF MAY 10"         
-##  [67] "SUMMARY OF MAY 13"          "SUMMARY OF MAY 14"         
-##  [69] "SUMMARY OF MAY 22 AM"       "SUMMARY OF MAY 22 PM"      
-##  [71] "SUMMARY OF MAY 26 AM"       "SUMMARY OF MAY 26 PM"      
-##  [73] "METRO STORM, MAY 26"        "SUMMARY OF MAY 31 AM"      
-##  [75] "SUMMARY OF MAY 31 PM"       "SUMMARY OF JUNE 3"         
-##  [77] "SUMMARY OF JUNE 4"          "SUMMARY JUNE 5-6"          
-##  [79] "SUMMARY JUNE 6"             "SUMMARY OF JUNE 11"        
-##  [81] "SUMMARY OF JUNE 12"         "SUMMARY OF JUNE 13"        
-##  [83] "SUMMARY OF JUNE 15"         "SUMMARY OF JUNE 16"        
-##  [85] "SUMMARY JUNE 18-19"         "SUMMARY OF JUNE 23"        
-##  [87] "SUMMARY OF JUNE 24"         "SUMMARY OF JUNE 30"        
-##  [89] "SUMMARY OF JULY 2"          "SUMMARY OF JULY 3"         
-##  [91] "SUMMARY OF JULY 11"         "SUMMARY OF JULY 22"        
-##  [93] "SUMMARY JULY 23-24"         "SUMMARY OF JULY 26"        
-##  [95] "SUMMARY OF JULY 29"         "SUMMARY OF AUGUST 1"       
-##  [97] "SUMMARY AUGUST 2-3"         "SUMMARY AUGUST 7"          
-##  [99] "SUMMARY AUGUST 9"           "SUMMARY AUGUST 10"         
-## [101] "SUMMARY AUGUST 17"          "SUMMARY AUGUST 21"         
-## [103] "SUMMARY AUGUST 28"          "SUMMARY SEPTEMBER 4"       
-## [105] "SUMMARY SEPTEMBER 20"       "SUMMARY SEPTEMBER 23"      
-## [107] "SUMMARY SEPT. 25-26"        "SUMMARY: OCT. 20-21"       
-## [109] "SUMMARY: OCTOBER 31"        "SUMMARY: NOV. 6-7"         
-## [111] "SUMMARY: NOV. 16"           "NO SEVERE WEATHER"         
-## [113] "SUMMARY OF MAY 22"          "SUMMARY OF JUNE 6"         
-## [115] "SUMMARY AUGUST 4"           "SUMMARY OF JUNE 10"        
-## [117] "SUMMARY OF JUNE 18"         "SUMMARY SEPTEMBER 3"       
-## [119] "SUMMARY: SEPT. 18"          "MUDSLIDE/LANDSLIDE"        
-## [121] "NONE"                       "BLOW-OUT TIDES"            
-## [123] "UNSEASONABLY COOL"          "BLOW-OUT TIDE"             
-## [125] "HYPOTHERMIA/EXPOSURE"       "MIXED PRECIPITATION"       
-## [127] "COASTALSTORM"               "SUMMARY OF MARCH 24-25"    
-## [129] "SUMMARY OF MARCH 27"        "SUMMARY OF MARCH 29"       
-## [131] "MILD AND DRY PATTERN"       "HIGH SWELLS"               
-## [133] "HIGH  SWELLS"               "DRY SPELL"                 
-## [135] "HOT SPELL"                  "UNSEASONABLY HOT"          
-## [137] "DRY WEATHER"                "COASTAL EROSION"           
-## [139] "TSTM"                       "HYPERTHERMIA/EXPOSURE"     
-## [141] "ROCK SLIDE"                 "PATCHY DENSE FOG"          
-## [143] "RECORD COOL"                "COOL SPELL"                
-## [145] "EXCESSIVELY DRY"            "VOG"                       
-## [147] "MONTHLY PRECIPITATION"      "MONTHLY TEMPERATURE"       
-## [149] "RECORD DRYNESS"             "DRY CONDITIONS"            
-## [151] "REMNANTS OF FLOYD"          "DRIEST MONTH"              
-## [153] "DRYNESS"                    "RECORD PRECIPITATION"      
-## [155] "ROUGH SEAS"                 "UNSEASONABLY COOL & WET"   
-## [157] "HIGH SURF ADVISORY"         "ABNORMALLY DRY"            
-## [159] "RED FLAG CRITERIA"          "SMOKE"                     
-## [161] "EXTREMELY WET"              "VERY DRY"                  
-## [163] "ROGUE WAVE"                 "NORTHERN LIGHTS"           
-## [165] "ABNORMALLY WET"             "DROWNING"                  
-## [167] "HIGH SURF ADVISORIES"
-```
-
-```r
-
-# Collect the remaining ones into 'OTHER'
+# Just collect those into a new event type that we'll call 'OTHER'
 data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)] <- "OTHER"
 ```
 
+  
+  
+--- End of Data Processing ---
+  
+  
+  
+  
+  
+  
+<HR>
+  
+Results
+--------------------------------------
+  
+## Fatalities and Injuries due to Extreme Weather Events
 
+Across the United States, which types of events (as indicated
+in the EVTYPE/EVTYPE2 variable) are most harmful with respect to
+population health?
+  
+As noted above, for data coverage reasons, we'll only
+look at data from 1994 onward.
 
 ```r
-# Generate a plot to answer Across the United States, which types of events
-# (as indicated in the EVTYPE variable) are most harmful with respect to
-# population health?
-
-# 1994 is when data reporting picked up, start with data from then onward.
 DT <- data.table(subset(data, data$BGN_DATE >= "1994-01-01"))
+```
 
-# aggregate harm to people by event type. Get top 25.
-results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE]
+  
+  
+Aggregate harm to people by event type. There are too many
+event types and many aren't impactful, so we'll focus on the top 10.
+
+```r
+results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE2]
 results <- results[order(V1, na.last = TRUE, decreasing = TRUE), ]
-top25 <- head(results, 25)
-
-# Plot them.
-p <- ggplot(top25, aes(x = reorder(EVTYPE, V1), y = V1)) + geom_bar(stat = "identity", 
-    fill = "blue") + coord_flip() + scale_y_continuous(labels = comma) + ggtitle("United States\nWeather Events and Population Harm - Top 25\n* Fatalities and Injuries *\nJan. 1994 - Nov. 2011") + 
-    xlab("Weather Event") + ylab("Number of Injuries and Fatalities")
-print(p)
+top10.event.types <- head(results$EVTYPE2, 10)
+DT <- DT[DT$EVTYPE2 %in% top10.event.types, ]
+results <- DT[, sum(FATALITIES + INJURIES), by = c("EVTYPE2", "Year")]
 ```
 
-![plot of chunk harm-to-population](figure/harm-to-population.png) 
+  
+  
+Plot the top event types that harmed the population. Lazy and stupid so brute
+forcing it.
+
+```r
+# starting plot
+p1994 <- ggplot(subset(results, Year == 1994), aes(x = reorder(EVTYPE2, V1), 
+    y = V1)) + geom_bar(stat = "identity", fill = "blue") + coord_flip() + scale_y_continuous(labels = comma) + 
+    xlab("Weather Event") + ylab("Number Instances") + facet_wrap(~Year)
+
+# rest of the plots
+p1995 <- p1994 %+% subset(results, Year == 1995)
+p1996 <- p1995 %+% subset(results, Year == 1996)
+p1997 <- p1996 %+% subset(results, Year == 1997)
+p1998 <- p1997 %+% subset(results, Year == 1998)
+p1999 <- p1998 %+% subset(results, Year == 1999)
+p2000 <- p1999 %+% subset(results, Year == 2000)
+p2001 <- p2000 %+% subset(results, Year == 2001)
+p2002 <- p2001 %+% subset(results, Year == 2002)
+p2003 <- p2002 %+% subset(results, Year == 2003)
+p2004 <- p2003 %+% subset(results, Year == 2004)
+p2005 <- p2004 %+% subset(results, Year == 2005)
+p2006 <- p2005 %+% subset(results, Year == 2006)
+p2007 <- p2006 %+% subset(results, Year == 2007)
+p2008 <- p2007 %+% subset(results, Year == 2008)
+p2009 <- p2008 %+% subset(results, Year == 2009)
+p2010 <- p2009 %+% subset(results, Year == 2010)
+p2011 <- p2010 %+% subset(results, Year == 2011)
+
+# output
+title <- "Top 10 United States Weather Event Types for Population Harm\nFatalities and Injuries\n1994 - Nov. 2011"
+grid.arrange(p1994, p1995, p1996, p1997, p1998, p1999, p2000, p2001, p2002, 
+    p2003, p2004, p2005, p2006, p2007, p2008, p2009, p2010, p2011, nrow = 6, 
+    main = title)
+```
+
+![plot of chunk population-harm-plot](figure/population-harm-plot.png) 
 
 ```r
 
-# Numbers for the Top 2?
-x <- head(top25, 2)
-x$V1 <- format(x$V1, big.mark = ",", scientific = F)
-setnames(x, c("Event", "Fatalities and Injuries"))
-x
+# release memory
+rm(p1994, p1995, p1996, p1997, p1998, p1999, p2000, p2001, p2002, p2003, p2004, 
+    p2005, p2006, p2007, p2008, p2009, p2010, p2011)
 ```
 
-```
-##             Event Fatalities and Injuries
-## 1:        TORNADO                  24,164
-## 2: EXCESSIVE HEAT                   8,428
-```
-
-
+  
+  
+## Economic Impact of Extreme Weather Events
+Across the United States, which types of events have the
+greatest economic consequences?
+  
+For economic impact, we care about property damage and
+crop damage, which can be found in the following fields:  
+   PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP 
+  
+Regarding the EXP fields, they should contain a value such as K, M or B. “K” for thousands, “M” for millions, and “B” for billions. We need to compute a calculate dollar amount using the exponent fields. To start, we need a vectorized function to translate the "EXP" character
+into a multiplier value.
+  
 
 ```r
-# Generate a plot to answer: Across the United States, which types of events
-# have the greatest economic consequences?
-
-# For economic impact, we care about: PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP
-# EXP: “K” for thousands, “M” for millions, and “B” for billions
-
 # > unique(data$CROPDMGEXP) [1] M K m B ? 0 k 2 Levels: 0 2 ? B K M k m >
 # unique(data$PROPDMGEXP) [1] K M B m + 0 5 6 ? 4 2 3 h 7 H - 1 8 Levels: +
 # - 0 1 2 3 4 5 6 7 8 ? B H K M h m
 
-# We need a vectorized function to translate the 'EXP' character into a
-# multiplier value.
 get.multiplier <- function(ch) {
     return(switch(EXPR = ch, K = 1000, M = 1e+06, B = 1e+09, 1))
 }
 v.get.multiplier <- Vectorize(get.multiplier)
-
-# some cleanup for sanity
-data$PROPDMGEXP <- toupper(str_trim(data$PROPDMGEXP))
-data$CROPDMGEXP <- toupper(str_trim(data$CROPDMGEXP))
-
-# calc the amount
-data$PROPDMG_CALC <- data$PROPDMG * v.get.multiplier(data$PROPDMGEXP)
-data$CROPDMG_CALC <- data$CROPDMG * v.get.multiplier(data$CROPDMGEXP)
-
-# 1994 is when data reporting picked up, start with data from then onward.
-DT <- data.table(subset(data, data$BGN_DATE >= "1994-01-01"))
-
-# aggregate damage by event type and get the top 25
-results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = EVTYPE]
-results <- results[order(V1, na.last = TRUE, decreasing = TRUE), ]
-top25 <- head(results, 25)
-
-# now plot it (show damage in terms of billions of dollars)
-p <- ggplot(top25, aes(x = reorder(EVTYPE, V1), y = V1/1e+09)) + geom_bar(stat = "identity", 
-    fill = "blue") + coord_flip() + scale_y_continuous(labels = comma) + ggtitle("United States\nWeather Events and Economic Harm - Top 25\n* Property and Crop Damange *\nJan. 1994 - Nov. 2011") + 
-    xlab("Weather Event") + ylab("Damage in Billions USD")
-print(p)
 ```
 
-![plot of chunk economic-consequences](figure/economic-consequences.png) 
+
+Some cleanup of the EXP fields for sanity...
+
+```r
+data$PROPDMGEXP <- toupper(str_trim(data$PROPDMGEXP))
+data$CROPDMGEXP <- toupper(str_trim(data$CROPDMGEXP))
+```
+
+
+With clean(ish) EXP values, we can calculate the actual amount
+of damage.
+
+```r
+data$PROPDMG_CALC <- data$PROPDMG * v.get.multiplier(data$PROPDMGEXP)
+data$CROPDMG_CALC <- data$CROPDMG * v.get.multiplier(data$CROPDMGEXP)
+```
+
+
+1994 is when data reporting began to be at a reasonable volume, so start with data
+from then onward.
+
+```r
+rm(DT)
+DT <- data.table(subset(data, data$BGN_DATE >= "1994-01-01"))
+```
+
+  
+Aggregate damage by event type.
+
+```r
+results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = EVTYPE2]
+results <- results[order(V1, na.last = TRUE, decreasing = TRUE), ]
+top10.event.types <- head(results$EVTYPE2, 10)
+DT <- DT[DT$EVTYPE2 %in% top10.event.types, ]
+results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = c("EVTYPE2", "Year")]
+```
+
+
+Now plot the top ten.
+
+```r
+# starting plot
+p1994 <- ggplot(subset(results, Year == 1994), aes(x = reorder(EVTYPE2, V1), 
+    y = V1/1e+09)) + geom_bar(stat = "identity", fill = "blue") + coord_flip() + 
+    scale_y_continuous(labels = comma) + xlab("Weather Event") + ylab("Damage - Billions") + 
+    facet_wrap(~Year)
+
+# rest of the plots
+p1995 <- p1994 %+% subset(results, Year == 1995)
+p1996 <- p1995 %+% subset(results, Year == 1996)
+p1997 <- p1996 %+% subset(results, Year == 1997)
+p1998 <- p1997 %+% subset(results, Year == 1998)
+p1999 <- p1998 %+% subset(results, Year == 1999)
+p2000 <- p1999 %+% subset(results, Year == 2000)
+p2001 <- p2000 %+% subset(results, Year == 2001)
+p2002 <- p2001 %+% subset(results, Year == 2002)
+p2003 <- p2002 %+% subset(results, Year == 2003)
+p2004 <- p2003 %+% subset(results, Year == 2004)
+p2005 <- p2004 %+% subset(results, Year == 2005)
+p2006 <- p2005 %+% subset(results, Year == 2006)
+p2007 <- p2006 %+% subset(results, Year == 2007)
+p2008 <- p2007 %+% subset(results, Year == 2008)
+p2009 <- p2008 %+% subset(results, Year == 2009)
+p2010 <- p2009 %+% subset(results, Year == 2010)
+p2011 <- p2010 %+% subset(results, Year == 2011)
+
+# output
+title <- "Top 10 United States Weather Event Types for Economic Impact\nProperty and Crop Damage (Billions USD)\n1994 - Nov. 2011"
+grid.arrange(p1994, p1995, p1996, p1997, p1998, p1999, p2000, p2001, p2002, 
+    p2003, p2004, p2005, p2006, p2007, p2008, p2009, p2010, p2011, nrow = 6, 
+    main = title)
+```
+
+![plot of chunk plot-damage](figure/plot-damage.png) 
 
 ```r
 
-# Numbers for the Top 2?
-x <- head(top25, 2)
-x$V1 <- format(x$V1/1e+09, big.mark = ",", scientific = F)
-setnames(x, c("Event", "Damage - Billions"))
-x
+# release memory
+rm(p1994, p1995, p1996, p1997, p1998, p1999, p2000, p2001, p2002, p2003, p2004, 
+    p2005, p2006, p2007, p2008, p2009, p2010, p2011)
 ```
 
-```
-##                Event Damage - Billions
-## 1:             FLOOD            149.69
-## 2: HURRICANE/TYPHOON             71.91
-```
+
 

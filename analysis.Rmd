@@ -1,33 +1,61 @@
 ---
-title: "Analysis of U.S. Weather Events"
-output:
-  html_document:
-    self_contained: true
+author: Jerry Cummings
+title: "Impact of U.S. Extreme Weather Events - 1994 to 2011"
+output: html_document
 ---
 
-Analysis Of U.S. Weather Events
+Impact of U.S. Extreme Weather Events - 1994 to 2011
 ========================================================
 
-Two questions to answer:
+Raw data from the National Climatic Data Center (NCDC)
+concerning weather events between 1950 and Nov. 2011 is
+analyzed for two topics of interest:
 
-1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+1. Across the United States, which types of events
+   are most harmful with respect to population health?
 
-2. Across the United States, which types of events have the greatest economic consequences?
+2. Across the United States, which types of events have
+   the greatest economic consequences?
 
+The data volume appears to be rather spotty before 1994, so
+our analysis focuses on data since 1-JAN-1994, or more than
+seventeen years worth. We find that:
+
+1. Tornadoes have outpaced every other weather event in
+   terms of fatalities and injuries during that time period,
+   with Heat the next most harmful.
+   
+2. Floods, Hurricanes and Tornadoes have been the most
+   impactful events in terms of damage as measured in U.S. dollars.
+
+Jerry Cummings  
+24-MAY-2014
+ 
+
+
+
+
+
+<HR>
+  
+Data Processing
+-----------------------------------------------------------------
 ```{r libraries}
 library(stringr)
 library(data.table)
 library(scales)
 library(ggplot2)
+library(gridExtra)
 ```
-
+  
+  
 ```{r get-raw-data, cache=TRUE}
-# read the data - read.csv can handle bz2 files. This is a long
-# running opreation, we'll want to cache it.
+# read the data - read.csv can handle bz2 files.
 raw.data <- read.csv(file = 'repdata-data-StormData.csv.bz2',
                      strip.white = TRUE)
 ```
-
+  
+  
 ```{r examine-raw-data, echo=FALSE}
 # Q: which columns have NA values?
 #
@@ -37,42 +65,64 @@ raw.data <- read.csv(file = 'repdata-data-StormData.csv.bz2',
 # what about EVTYPE? seems like some are the same but for caps
 #length(unique(raw.data$EVTYPE))          # 985
 #length(unique(toupper(raw.data$EVTYPE))) # 898
-```
+#
+#What are our state values?
+#unique(data$STATE)
 
-
-```{r process-raw-data, echo=TRUE}
-# copy of raw data so that we can refer back if we need to
-data <- raw.data
-
-# date type conversions
-data$BGN_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
-data$END_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
-
-# states?
-unique(data$STATE)
-
-# some of those are states, some appear to be territories, and
-# some to be either fabricated on-the-fly or mistakes. I'm 
-# hesitant to change any for this analysis.
+# Some of those are states, some appear to be territories, and
+# some seem to be either fabricated on-the-fly or mistakes. I'm 
+# hesitant to change any for this analysis; we'll leave them
+# alone. Weird examples:
 #
 #   PZ? maybe that's for Panama Canal Zone which is now obsolete.
 #   GM? maybe that's for Guam, which is GU?
 #   LH? who knows?
-
-# what does our weather event distribution look like?
+```
+  
+  
+Make a copy of raw data with a name that reflects that
+it is NOT raw data.
+```{r copy-raw-data, echo=TRUE}
+data <- raw.data
+rm(raw.data)
+```
+  
+  
+Convert date columns to a Date datatype
+```{r date-type-conversions}
+data$BGN_DATE <- as.Date(data$BGN_DATE, format='%m/%d/%Y')
+data$END_DATE <- as.Date(data$END_DATE, format='%m/%d/%Y')
+data$Year <-as.numeric(format(data$BGN_DATE,'%Y'))
+```
+  
+  
+What does our weather event distribution look like? Start by
+getting a count for each BGN_DATE.
+```{r get-date-counts}
 DT <- data.table(data)
-results <- DT[, length(BGN_DATE), by = as.numeric(format(BGN_DATE,'%Y'))]
+results <- DT[, length(BGN_DATE), by = Year]
 setnames(results, c('Year', 'Count'))
-
+```
+  
+  
+Now plot it. After the first time we ran this, we noted
+that the data took a turn for the better in 1994, so let's
+annotate that.
+```{r plot-date-counts}
 p <- ggplot(results, aes(x=Year, y=Count)) +
   geom_point(color='blue') +
   geom_vline(x=1994, color='red') +
   annotate('text', x=1991, y=55000, label='1994', color='red') +
   ggtitle('Number of Weather Events Recorded Per Year') +
-  scale_y_continuous(labels = comma)
+  scale_y_continuous(labels = comma) 
 print(p)
-
-# Here are the valid event types from the docs
+```
+  
+  
+Move to event types. Event types in the data are all over the place. Let's start with
+the valid event types from the document. We'll just cut/paste from
+the PDF and then surround it with code.
+```{r setup-valid-event-types}
 valid.event.types <- c(
   'Astronomical Low Tide',
   'Avalanche',
@@ -123,25 +173,36 @@ valid.event.types <- c(
   'Winter Storm',
   'Winter Weather'
 )
-valid.event.types <- toupper(valid.event.types)
-
-# Excessive messiness. Those field guys need better data entry
-# software so that a bunch of unnecessary hooey isn't flooding
-# our data. (Ha, ha. Get it? 'flooding'???)
-
-# Let's ease our data cleanup effort a bit. For now, we'll only look
-# at events that have FATALITIES, INJURIES, PROPDMG, CROPDMG as those
-# are the areas that we'll be focusing on in this analysis.
+valid.event.types <- toupper(valid.event.types) # convenience
+```
+  
+  
+As we said, the raw data is chock full of messiness. Those field guys
+need better data entry software so that a bunch of unnecessary hooey
+isn't flooding our data. (Ha, ha. Get it? 'flooding'???)
+  
+Let's ease our data cleanup effort a bit. For now, we'll only look
+at events that have FATALITIES, INJURIES, PROPDMG, CROPDMG as those
+are the areas that we'll be focusing on in this analysis.
+```{r get-subset-of-data}
 data <- subset(data, !is.na(FATALITIES) |
                  !is.na(INJURIES) |
                  !is.na(PROPDMG) |
                  !is.na(CROPDMG)
                )
-
-# uniformly upper case
+```
+  
+  
+Make a new copy of the event types that we can muck
+around with. Go ahead and flip it to upper case and
+trim off leading/trailing whitespace.
+```{r event-type-cleanup-1}
 data$EVTYPE2 <- toupper(str_trim(data$EVTYPE))
-
-# start making substitutions. Note: order matters
+```
+  
+  
+Let's do some fixup. Note: order matters in this chunk of code!
+```{r event-type-cleanup-2}
 data$EVTYPE2[grepl('.*AVAL.*', data$EVTYPE2)] <- 'AVALANCHE'
 
 data$EVTYPE2[grepl('.*T.*WIND.*', data$EVTYPE2)] <- 'THUNDERSTORM WIND'
@@ -239,61 +300,110 @@ data$EVTYPE2[grepl('.*FIRE.*', data$EVTYPE2)] <- 'WILDFIRE'
 
 data$EVTYPE2[grepl('.*VOLC.*', data$EVTYPE2)] <- 'VOLCANIC ASH'
 
-# Report on what's left that doesn't fit
-x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)])
-length(x)
-x
+# During development, report on what's left that didn't
+# get mapped to the known types
+#x <- unique(data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)])
+#length(x)
+#x
 
-# Collect the remaining ones into 'OTHER'
+# Just collect those into a new event type that we'll call 'OTHER'
 data$EVTYPE2[!(data$EVTYPE2 %in% valid.event.types)] <- 'OTHER'
 ```
+  
+  
+--- End of Data Processing ---
+  
+  
+  
+  
+  
+  
+<HR>
+  
+Results
+--------------------------------------
+  
+## Fatalities and Injuries due to Extreme Weather Events
 
-```{r harm-to-population}
-# Generate a plot to answer
-#
-#   Across the United States, which types of events (as indicated
-#   in the EVTYPE variable) are most harmful with respect to
-#   population health?
-#
-
-# 1994 is when data reporting picked up, start with data
-# from then onward.
+Across the United States, which types of events (as indicated
+in the EVTYPE/EVTYPE2 variable) are most harmful with respect to
+population health?
+  
+As noted above, for data coverage reasons, we'll only
+look at data from 1994 onward.
+```{r population-harm-date-subset}
 DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
-
-# aggregate harm to people by event type. Get top 25.
-results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE]
+```
+  
+  
+Aggregate harm to people by event type. There are too many
+event types and many aren't impactful, so we'll focus on the top 10.
+```{r population-harm-aggregation}
+results <- DT[, sum(FATALITIES + INJURIES), by = EVTYPE2]
 results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
-top25 <- head(results, 25)
-
-# Plot them.
-p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1)) +
+top10.event.types <- head(results$EVTYPE2, 10)
+DT <- DT[DT$EVTYPE2 %in% top10.event.types,]
+results <- DT[, sum(FATALITIES + INJURIES), by = c('EVTYPE2','Year')]
+```
+  
+  
+Plot the top event types that harmed the population. Lazy and stupid so brute
+forcing it.
+```{r population-harm-plot, fig.width=10, fig.height=18}
+# starting plot
+p1994 <- ggplot(subset(results, Year==1994), aes(x=reorder(EVTYPE2,V1), y=V1)) +
   geom_bar(stat='identity', fill='blue') +
   coord_flip() +
   scale_y_continuous(labels = comma) +
-  ggtitle('United States\nWeather Events and Population Harm - Top 25\n* Fatalities and Injuries *\nJan. 1994 - Nov. 2011') +
   xlab('Weather Event') +
-  ylab('Number of Fatalities and Injuries')
-print(p)
+  ylab('Number Instances') +
+  facet_wrap(~Year)
 
-# Numbers for the Top 2?
-x <- head(top25, 2)
-x$V1 <- format(x$V1, big.mark=",", scientific=F)
-setnames(x, c('Event', 'Fatalities and Injuries'))
-x
+# rest of the plots
+p1995 <- p1994 %+% subset(results, Year==1995)
+p1996 <- p1995 %+% subset(results, Year==1996)
+p1997 <- p1996 %+% subset(results, Year==1997)
+p1998 <- p1997 %+% subset(results, Year==1998)
+p1999 <- p1998 %+% subset(results, Year==1999)
+p2000 <- p1999 %+% subset(results, Year==2000)
+p2001 <- p2000 %+% subset(results, Year==2001)
+p2002 <- p2001 %+% subset(results, Year==2002)
+p2003 <- p2002 %+% subset(results, Year==2003)
+p2004 <- p2003 %+% subset(results, Year==2004)
+p2005 <- p2004 %+% subset(results, Year==2005)
+p2006 <- p2005 %+% subset(results, Year==2006)
+p2007 <- p2006 %+% subset(results, Year==2007)
+p2008 <- p2007 %+% subset(results, Year==2008)
+p2009 <- p2008 %+% subset(results, Year==2009)
+p2010 <- p2009 %+% subset(results, Year==2010)
+p2011 <- p2010 %+% subset(results, Year==2011)
+
+# output
+title <- 'Top 10 United States Weather Event Types for Population Harm\nFatalities and Injuries\n1994 - Nov. 2011'
+grid.arrange(p1994, p1995, p1996, p1997, p1998, p1999, p2000,
+             p2001, p2002, p2003, p2004, p2005, p2006, p2007,
+             p2008, p2009, p2010, p2011,
+             nrow = 6, main=title)
+
+# release memory
+rm(p1994, p1995, p1996, p1997, p1998, p1999,
+   p2000, p2001, p2002, p2003, p2004, p2005,
+   p2006, p2007, p2008, p2009, p2010, p2011)
 ```
-
-```{r economic-consequences}
-# Generate a plot to answer:
-#
-#   Across the United States, which types of events have the
-#   greatest economic consequences?
-#
-
-# For economic impact, we care about:
-#   PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP 
-#
-# EXP: “K” for thousands, “M” for millions, and “B” for billions
-
+  
+  
+## Economic Impact of Extreme Weather Events
+Across the United States, which types of events have the
+greatest economic consequences?
+  
+For economic impact, we care about property damage and
+crop damage, which can be found in the following fields:  
+   PROPDMG PROPDMGEXP CROPDMG CROPDMGEXP 
+  
+Regarding the EXP fields, they should contain a value such as K, M or B. “K” for thousands, “M” for millions, and “B” for billions. We need to compute a calculate dollar amount using the exponent fields. To start, we need a vectorized function to translate the "EXP" character
+into a multiplier value.
+  
+```{r multipler}
 # > unique(data$CROPDMGEXP)
 #  [1]   M K m B ? 0 k 2
 # Levels:  0 2 ? B K M k m
@@ -302,8 +412,6 @@ x
 #  [1] K M   B m + 0 5 6 ? 4 2 3 h 7 H - 1 8
 # Levels:  + - 0 1 2 3 4 5 6 7 8 ? B H K M h m
 
-# We need a vectorized function to translate the "EXP" character
-# into a multiplier value.
 get.multiplier <- function(ch) {
   return(
     switch(EXPR = ch,
@@ -315,37 +423,78 @@ get.multiplier <- function(ch) {
   )
 }
 v.get.multiplier <- Vectorize(get.multiplier)
+```
 
-# some cleanup for sanity
+Some cleanup of the EXP fields for sanity...
+```{r exp-cleanup}
 data$PROPDMGEXP <- toupper(str_trim(data$PROPDMGEXP))
 data$CROPDMGEXP <- toupper(str_trim(data$CROPDMGEXP))
+```
 
-# calc the amount
+With clean(ish) EXP values, we can calculate the actual amount
+of damage.
+```{r calc-damage}
 data$PROPDMG_CALC <- data$PROPDMG * v.get.multiplier(data$PROPDMGEXP)
 data$CROPDMG_CALC <- data$CROPDMG * v.get.multiplier(data$CROPDMGEXP)
+```
 
-# 1994 is when data reporting picked up, start with data
-# from then onward.
+1994 is when data reporting began to be at a reasonable volume, so start with data
+from then onward.
+```{r subset-damage-data}
+rm(DT)
 DT <- data.table(subset(data, data$BGN_DATE >= '1994-01-01'))
-
-# aggregate damage by event type and get the top 25
-results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = EVTYPE]
+```
+  
+Aggregate damage by event type.
+```{r aggregate-damage}
+results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = EVTYPE2]
 results <- results[order(V1, na.last=TRUE, decreasing=TRUE),]
-top25 <- head(results, 25)
+top10.event.types <- head(results$EVTYPE2, 10)
+DT <- DT[DT$EVTYPE2 %in% top10.event.types,]
+results <- DT[, sum(PROPDMG_CALC + CROPDMG_CALC), by = c('EVTYPE2','Year')]
+```
 
-# now plot it (show damage in terms of billions of dollars)
-p <- ggplot(top25, aes(x=reorder(EVTYPE,V1), y=V1/1000000000)) +
+Now plot the top ten.
+```{r plot-damage, fig.width=10, fig.height=18}
+# starting plot
+p1994 <- ggplot(subset(results, Year==1994), aes(x=reorder(EVTYPE2,V1), y=V1/1000000000)) +
   geom_bar(stat='identity', fill='blue') +
   coord_flip() +
   scale_y_continuous(labels = comma) +
-  ggtitle('United States\nWeather Events and Economic Harm - Top 25\n* Property and Crop Damange *\nJan. 1994 - Nov. 2011') +
   xlab('Weather Event') +
-  ylab('Damage in Billions USD')
-print(p)
+  ylab('Damage - Billions') +
+  facet_wrap(~Year)
 
-# Numbers for the Top 2?
-x <- head(top25, 2)
-x$V1 <- format(x$V1/1000000000, big.mark=",", scientific=F)
-setnames(x, c('Event', 'Damage - Billions'))
-x
+# rest of the plots
+p1995 <- p1994 %+% subset(results, Year==1995)
+p1996 <- p1995 %+% subset(results, Year==1996)
+p1997 <- p1996 %+% subset(results, Year==1997)
+p1998 <- p1997 %+% subset(results, Year==1998)
+p1999 <- p1998 %+% subset(results, Year==1999)
+p2000 <- p1999 %+% subset(results, Year==2000)
+p2001 <- p2000 %+% subset(results, Year==2001)
+p2002 <- p2001 %+% subset(results, Year==2002)
+p2003 <- p2002 %+% subset(results, Year==2003)
+p2004 <- p2003 %+% subset(results, Year==2004)
+p2005 <- p2004 %+% subset(results, Year==2005)
+p2006 <- p2005 %+% subset(results, Year==2006)
+p2007 <- p2006 %+% subset(results, Year==2007)
+p2008 <- p2007 %+% subset(results, Year==2008)
+p2009 <- p2008 %+% subset(results, Year==2009)
+p2010 <- p2009 %+% subset(results, Year==2010)
+p2011 <- p2010 %+% subset(results, Year==2011)
+
+# output
+title <- 'Top 10 United States Weather Event Types for Economic Impact\nProperty and Crop Damage (Billions USD)\n1994 - Nov. 2011'
+grid.arrange(p1994, p1995, p1996, p1997, p1998, p1999, p2000,
+             p2001, p2002, p2003, p2004, p2005, p2006, p2007,
+             p2008, p2009, p2010, p2011,
+             nrow = 6, main=title)
+
+# release memory
+rm(p1994, p1995, p1996, p1997, p1998, p1999,
+   p2000, p2001, p2002, p2003, p2004, p2005,
+   p2006, p2007, p2008, p2009, p2010, p2011)
 ```
+
+
